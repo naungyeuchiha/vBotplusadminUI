@@ -11,9 +11,7 @@
       credentials: "omit"
     });
 
-    if (!response.ok) {
-      throw new Error(`Google Sheets GET failed: HTTP ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`Google Sheets GET failed: HTTP ${response.status}`);
 
     const data = await response.json();
     return {
@@ -23,32 +21,39 @@
     };
   }
 
-  async function saveRemoteState(state) {
+  function saveRemoteState(state) {
     const payload = JSON.stringify({
       action: "replace",
       transactions: Array.isArray(state.transactions) ? state.transactions : [],
       categories: Array.isArray(state.categories) ? state.categories : [],
       incomes: convertIncomesForSheet(state.incomes || {})
     });
+    const url = `${SHEETS_API_URL}?write=${Date.now()}`;
 
-    // Do not set Content-Type: application/json here. That causes a CORS
-    // preflight, which Google Apps Script web apps do not handle reliably.
-    // A plain text POST is accepted by e.postData.contents and avoids preflight.
-    const response = await fetch(`${SHEETS_API_URL}?write=${Date.now()}`, {
+    // sendBeacon is designed for cross-origin fire-and-forget writes and does
+    // not require the CORS preflight that breaks browser fetch POST requests.
+    if (navigator.sendBeacon) {
+      const accepted = navigator.sendBeacon(
+        url,
+        new Blob([payload], { type: "text/plain;charset=UTF-8" })
+      );
+      if (accepted) return Promise.resolve({ ok: true, dispatched: true });
+    }
+
+    // Fallback for browsers that reject sendBeacon. Do not use
+    // Content-Type: application/json because that triggers a preflight.
+    return fetch(url, {
       method: "POST",
       mode: "no-cors",
       credentials: "omit",
       cache: "no-store",
       body: payload
-    });
-
-    // no-cors returns an opaque response. The request was dispatched, but the
-    // browser is not allowed to read the Apps Script response body.
-    if (response.type !== "opaque" && !response.ok) {
+    }).then((response) => {
+      if (response.type === "opaque" || response.ok) {
+        return { ok: true, dispatched: true };
+      }
       throw new Error(`Google Sheets POST failed: HTTP ${response.status}`);
-    }
-
-    return { ok: true, dispatched: true };
+    });
   }
 
   function convertTransactions(rows) {
