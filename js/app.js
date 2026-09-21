@@ -36,32 +36,35 @@
       console.warn("Failed to load local app state", error);
     }
 
-    return { incomes: {}, transactions: [], categories: defaults.map(item => ({ ...item })) };
+    return {
+      incomes: {},
+      transactions: [],
+      categories: defaults.map((item) => ({ ...item }))
+    };
   }
 
   function save() {
     localStorage.setItem(KEY, JSON.stringify(state));
 
-    if (typeof saveRemoteState === "function") {
-      if (syncInFlight) return;
-      syncInFlight = true;
+    if (typeof window.saveRemoteState !== "function") return;
+    if (syncInFlight) return;
 
-      saveRemoteState(state)
-        .then(() => {
-          syncInFlight = false;
-        })
-        .catch((error) => {
-          syncInFlight = false;
-          console.warn("Google Sheets save failed; local data remains saved.", error);
-          toast("Saved locally; Google sync failed.");
-        });
-    }
+    syncInFlight = true;
+    window.saveRemoteState(state)
+      .then(() => {
+        syncInFlight = false;
+      })
+      .catch((error) => {
+        syncInFlight = false;
+        console.warn("Google Sheets save failed; local data remains saved.", error);
+        toast("Saved locally; Google sync failed.");
+      });
   }
 
   function loadRemoteToState() {
-    if (typeof loadRemoteState !== "function") return;
+    if (typeof window.loadRemoteState !== "function") return;
 
-    loadRemoteState()
+    window.loadRemoteState()
       .then((remote) => {
         const hasRemoteData =
           (remote && Array.isArray(remote.transactions) && remote.transactions.length) ||
@@ -73,7 +76,7 @@
         state = {
           incomes: remote.incomes || {},
           transactions: remote.transactions || [],
-          categories: remote.categories && remote.categories.length ? remote.categories : defaults.map(item => ({ ...item }))
+          categories: remote.categories && remote.categories.length ? remote.categories : defaults.map((item) => ({ ...item }))
         };
 
         localStorage.setItem(KEY, JSON.stringify(state));
@@ -85,7 +88,7 @@
   }
 
   function money(n) {
-    return `${Math.round(n).toLocaleString("en-US")} MMK`;
+    return `${Math.round(Number(n || 0)).toLocaleString("en-US")} MMK`;
   }
 
   function esc(s) {
@@ -119,22 +122,7 @@
     $("creditTotal").textContent = money(t.credit);
     $("remaining").textContent = money(t.income - t.expense - t.loan - t.credit);
 
-    const implementedBreakdown = [...t.tx].filter((x) => x.type !== "income");
-    const groups = {};
-    implementedBreakdown.forEach((x) => {
-      groups[x.category] = (groups[x.category] || 0) + Number(x.amount || 0);
-    });
-
-    const breakdown = Object.entries(groups)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, value]) => `
-        <div class="activity">
-          <span>${esc(name)}</span>
-          <b>${money(value)}</b>
-        </div>
-      `).join("") || "<div class='empty'>No data yet</div>";
-
-    $("breakdown").innerHTML = breakdown;
+    renderBreakdown(t);
     renderRecent(t.tx);
     renderAnalysis(t);
     renderRows(t.tx);
@@ -149,9 +137,11 @@
     });
 
     const items = Object.entries(groups).sort((a, b) => b[1] - a[1]);
-    $("breakdown").innerHTML = items.length ? items.map(([name, value]) => `
-      <div class="activity"><span>${esc(name)}</span><b>${money(value)}</b></div>
-    `).join("") : "<div class='empty'>No data yet</div>";
+    $("breakdown").innerHTML = items.length
+      ? items.map(([name, value]) => `
+          <div class="activity"><span>${esc(name)}</span><b>${money(value)}</b></div>
+        `).join("")
+      : "<div class='empty'>No data yet</div>";
   }
 
   function icon(type) {
@@ -164,9 +154,15 @@
 
   function renderRecent(tx) {
     const arr = [...tx].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-    $("recent").innerHTML = arr.length ? arr.map((x) => `
-      <div class="activity"><div class="activity-icon">${icon(x.type)}</div><div><strong>${esc(typeName(x.type))}</strong><small>${esc(x.category || "Uncategorized")}</small></div><b>${money(Number(x.amount || 0))}</b></div>
-    `).join("") : "<div class='empty'>No recent activity</div>";
+    $("recent").innerHTML = arr.length
+      ? arr.map((x) => `
+          <div class="activity">
+            <div class="activity-icon">${icon(x.type)}</div>
+            <div><strong>${esc(typeName(x.type))}</strong><small>${esc(x.category || "Uncategorized")}</small></div>
+            <b>${money(Number(x.amount || 0))}</b>
+          </div>
+        `).join("")
+      : "<div class='empty'>No recent activity</div>";
   }
 
   function renderAnalysis(t) {
@@ -188,15 +184,17 @@
   function renderRows(tx) {
     const arr = [...tx].sort((a, b) => b.date.localeCompare(a.date));
     $("txCount").textContent = `${arr.length} transaction${arr.length === 1 ? "" : "s"}`;
-    $("txRows").innerHTML = arr.length ? arr.map((x) => `
-      <tr>
-        <td>${esc(x.date || "")}</td>
-        <td>${esc(typeName(x.type))}</td>
-        <td>${esc(x.category || "Uncategorized")}</td>
-        <td>${money(Number(x.amount || 0))}</td>
-        <td>${esc(x.note || "")}</td>
-      </tr>
-    `).join("") : "<tr><td colspan='5'>No transactions yet</td></tr>";
+    $("txRows").innerHTML = arr.length
+      ? arr.map((x) => `
+          <tr>
+            <td>${esc(x.date || "")}</td>
+            <td>${esc(typeName(x.type))}</td>
+            <td>${esc(x.category || "Uncategorized")}</td>
+            <td>${money(Number(x.amount || 0))}</td>
+            <td>${esc(x.note || "")}</td>
+          </tr>
+        `).join("")
+      : "<tr><td colspan='5'>No transactions yet</td></tr>";
   }
 
   function categoriesFor(type) {
@@ -205,18 +203,24 @@
 
   function refreshCategorySelect() {
     const list = categoriesFor(formType);
-    $("category").innerHTML = list.length ? list.map((x) => `<option>${esc(x.name)}</option>`).join("") : '<option>Uncategorized</option>';
+    $("category").innerHTML = list.length
+      ? list.map((x) => `<option>${esc(x.name)}</option>`).join("")
+      : '<option>Uncategorized</option>';
   }
 
   function setFormType(type) {
     formType = type;
-    document.querySelectorAll("[data-formtype]").forEach((b) => b.classList.toggle("active", b.dataset.formtype === type));
+    document.querySelectorAll("[data-formtype]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.formtype === type);
+    });
+
     $("formTitle").textContent = {
       expense: "Add Expense",
       income: "Add Income",
       loan: "Add Loan Payment",
       credit: "Add Credit Payback"
     }[type];
+
     refreshCategorySelect();
   }
 
@@ -279,12 +283,16 @@
     $("txForm").reset();
     $("date").value = today;
     setFormType(formType);
-    toast("Saved to local storage and Google Sheets");
+    toast("Saved locally and sync started");
   });
 
   $("clearBtn").addEventListener("click", () => {
     if (!confirm("Delete all transactions and income records?")) return;
-    state = { incomes: {}, transactions: [], categories: defaults.map(item => ({ ...item })) };
+    state = {
+      incomes: {},
+      transactions: [],
+      categories: defaults.map((item) => ({ ...item }))
+    };
     save();
     render();
     toast("All data cleared");
@@ -305,7 +313,9 @@
         <div class="category-block">
           <h3>${names[type]}</h3>
           <div class="chip-list">
-            ${items.length ? items.map((item) => `<span class="chip">${esc(item.name)} <button data-remove-cat="${esc(item.name)}" data-type="${type}" class="remove-cat">×</button></span>`).join("") : "<span class='muted'>No categories</span>"}
+            ${items.length
+              ? items.map((item) => `<span class="chip">${esc(item.name)} <button data-remove-cat="${esc(item.name)}" data-type="${type}" class="remove-cat">×</button></span>`).join("")
+              : "<span class='muted'>No categories</span>"}
           </div>
         </div>
       `;
