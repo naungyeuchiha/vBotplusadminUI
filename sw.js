@@ -1,0 +1,1 @@
+const C="moneyflow-v3";const A=["./","./index.html","./css/app.css","./js/app.js","./manifest.webmanifest"];self.addEventListener("install",e=>e.waitUntil(caches.open(C).then(c=>c.addAll(A)).then(()=>self.skipWaiting())));self.addEventListener("fetch",e=>e.respondWith(caches.match(e.request).then(x=>x||fetch(e.request))))
